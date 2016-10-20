@@ -31,6 +31,14 @@ local completer = require('fb.editline.completer')
 local eh = require('fb.util.error')
 local base = require('fb.trepl.base')
 
+function string:split(sep)
+  sep = sep or ','
+  local fields = {}
+  local pattern = string.format('([^%s]+)', sep)
+  self:gsub(pattern, function(c) fields[#fields+1] = c end)
+  return fields
+end
+
 -- k : name of variable
 -- m : max length
 local function printvar(key,val,m)
@@ -189,7 +197,7 @@ local function make_repl(prompt_prefix)
         complete = completer.complete,
     })
 
-    local function repl()
+    local function repl(command)
         -- Timer
         local timer_start, timer_stop
         if torch and torch.Timer then
@@ -335,11 +343,37 @@ local function make_repl(prompt_prefix)
             return true
         end
 
-        while true do
-            local line = el:read()
-            if not process_line(line) then
-                break
+        if command ~= nil and command:match("^%s*(.-)%s*$") ~= "" then
+          local args = command:split(' ')
+          arg = {}
+          local cur = ""
+          local d = 0
+          for k,v in pairs(args) do
+            if string.sub(v, 1, 1) == '"' then
+              d = d + 1
+              v = string.sub(v, 2)
             end
+            if string.sub(v, -1) == '"' then
+              d = d - 1
+              v = string.sub(v, 1, string.len(v)-1)
+            end
+            if cur ~= "" then
+              cur = cur .. " "
+            end
+            cur = cur .. v
+            if d == 0 then
+              table.insert(arg, cur)
+              cur = ""
+            end
+          end
+          process_line('dofile("' .. table.remove(arg, 1) .. '")')
+        else
+          while true do
+              local line = el:read()
+              if not process_line(line) then
+                  break
+              end
+          end
         end
     end
 
@@ -353,8 +387,8 @@ for k,v in pairs(_G) do
     _G._preloaded_[k] = true
 end
 
-local function repl()
-    make_repl()()
+local function repl(command)
+    make_repl()(command)
 end
 
 return {
